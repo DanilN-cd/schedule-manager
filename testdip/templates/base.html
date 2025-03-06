@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Моя система{% endblock %}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+        }
+        .deleted {
+            background-color: #f5f5f5;  /* Серый фон */
+            color: #999;  /* Серый текст */
+            text-decoration: line-through; /* Перечёркнутый текст */
+        }
+
+        .navbar {
+            background-color: #007bff;
+            padding: 10px;
+            text-align: center;
+        }
+        .navbar a {
+            color: white;
+            padding: 14px 20px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .navbar a:hover, .navbar a.active {
+            background-color: #0056b3;
+            border-radius: 5px;
+        }
+        .container {
+            width: 90%;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            border: 1px solid #d4d4d4;;
+        }
+        th, td {
+            border: 1px solid #d4d4d4;
+            padding: 2px;
+            text-align: center;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+            border: 1px solid #d4d4d4;;
+        }
+        input[type="number"], input[type="date"], input[type="text"], select {
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            width: 100%;
+            box-sizing: border-box;
+            text-align: left; /* Выравнивание текста в выпадающем списке */
+        }
+        button, .btn {
+            margin: 5px;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            border: none;
+            color: white;
+            text-decoration: none;
+            display: inline-block;
+        }
+        button[type="submit"], .btn-save {
+            background: #28a745;
+        }
+        button[type="button"], .btn-edit {
+            background: #ffc107;
+        }
+        .btn-delete {
+            background: #dc3545;
+        }
+        .btn:hover {
+            opacity: 0.8;
+        }
+        .logout-button {
+            background: #dc3545;
+        }
+        .edit-icon {
+            cursor: pointer;
+            color: #ffc107;
+            margin-left: 10px;
+            font-size: 16px;
+        }
+        .edit-icon:hover {
+            color: #e0a800;
+        }
+        .button {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            font-size: 16px;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .button.secondary {
+            background-color: #28a745;
+        }
+        .button.secondary:hover {
+            background-color: #218838;
+        }
+        .logout-button {
+            background-color: #dc3545;
+            margin-top: 20px;
+        }
+        .logout-button:hover {
+            background-color: #c82333;
+        }
+        #reportOptions .button {
+            margin: 5px 0;
+        }
+        .table-container {
+            max-height: 1000px; /* Высота контейнера */
+            overflow-y: auto; /* Вертикальная прокрутка */
+            position: relative;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            background-color: white;
+            z-index: 10;
+        }
+        button[type="button"], .btn-up-down {
+            background: #ffc107;
+            padding: 5px;
+            width: 40px;
+            margin: 2px;
+        }
+        .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5); /* Прозрачный черный фон */
+    z-index: 999; /* Поверх таблицы */
+}
+
+/* Окно модального выбора */
+.modal {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000; /* Поверх затемненного фона */
+    width: 300px;
+    text-align: center;
+}
+
+/* Контент внутри окна */
+.modal-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Кнопки */
+.modal-buttons {
+    margin-top: 20px;
+}
+
+.modal-buttons button {
+    padding: 10px 15px;
+    margin: 5px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+#confirm-export {
+    background-color: #4CAF50; /* Зеленый */
+    color: white;
+}
+
+#close-modal {
+    background-color: #f44336; /* Красный */
+    color: white;
+}
+    </style>
+</head>
+<body>
+
+    <div class="navbar">
+        <a href="{% url 'home' %}" class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Главная</a>
+        <a href="{% url 'groups_page' %}" class="{% if request.resolver_match.url_name == 'groups_page' %}active{% endif %}">Группы</a>
+        <a href="{% url 'prepods_page' %}" class="{% if request.resolver_match.url_name == 'prepods_page' %}active{% endif %}">Преподаватели</a>
+        <a href="{% url 'schedule_page' %}" class="{% if request.resolver_match.url_name == 'schedule_page' %}active{% endif %}">Расписание</a>
+        <a href="{% url 'run_algorithm_page' %}" class="{% if request.resolver_match.url_name == 'run_algorithm_page' %}active{% endif %}">Автоматическое расписание</a>
+        <a href="/admin/">Админ-панель</a>
+    </div>
+
+    <div class="container">
+        {% block content %}
+        {% endblock %}
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Преподаватели{% endblock %}
+
+{% block content %}
+<form action="{% url 'add_prep' %}" method="POST">
+    {% csrf_token %}
+
+    <label for="id_name">Имя:</label>
+    {{ form.name }}
+
+    <label>Предметы:</label>
+    <button type="button" id="show-subjects">Выбрать предметы</button>
+    <div id="subjects-container" style="display: none;">
+        {{ form.predmet }}
+    </div>
+    <div id="selected-subjects">Не выбрано</div>
+
+    <label for="id_Cab">Кабинет:</label>
+    {{ form.Cab }}
+
+    <button type="submit" class="btn btn-save">Добавить</button>
+</form>
+
+<table border="1">
+    {% for prepod in prepods %}
+    <tr>
+        <td rowspan="{{ prepod.predmet.all|length|add:1 }}">
+            <a href="{% url 'edit_prep' prepod.id %}" class="btn btn-edit">Редактировать</a>
+            <a href="{% url 'delete_prep' prepod.id %}" class="btn btn-delete" onclick="return confirm('Удалить преподавателя?');">Удалить</a>
+        </td>
+        <td rowspan="{{ prepod.predmet.all|length|add:1 }}">{{ prepod.name }}</td>
+    </tr>
+    {% for predmet in prepod.predmet.all %}
+    <tr>
+        <td>{{ predmet.name }}</td>
+    </tr>
+    {% endfor %}
+    {% endfor %}
+</table>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const showSubjectsBtn = document.getElementById("show-subjects");
+        const subjectsContainer = document.getElementById("subjects-container");
+        const checkboxes = subjectsContainer.querySelectorAll("input[type='checkbox']");
+        const selectedSubjectsDiv = document.getElementById("selected-subjects");
+
+        showSubjectsBtn.addEventListener("click", function () {
+            subjectsContainer.style.display = subjectsContainer.style.display === "none" ? "block" : "none";
+        });
+
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener("change", function () {
+                let selected = [];
+                checkboxes.forEach(cb => {
+                    if (cb.checked) {
+                        selected.push(cb.nextSibling.textContent.trim());
+                    }
+                });
+                selectedSubjectsDiv.textContent = selected.length > 0 ? selected.join(", ") : "Не выбрано";
+            });
+        });
+    });
+</script>
+
+{% endblock %}

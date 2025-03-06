@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}Запуск алгоритма{% endblock %}
+
+{% block content %}
+<h2>Запуск алгоритма генерации расписания</h2>
+
+<form id="run-algorithm-form">
+    <label for="start_date">Начальная дата:</label>
+    <input type="date" id="start_date" name="start_date" required>
+    <br>
+    <label for="end_date">Конечная дата:</label>
+    <input type="date" id="end_date" name="end_date" required>
+    <br>
+    <button type="submit" class="btn btn-save">Запустить алгоритм</button>
+</form>
+
+<h2>Загрузка файла Excel</h2>
+
+<form id="upload-file-form" enctype="multipart/form-data">
+    <label for="group_name">Название группы:</label>
+    <input type="text" id="group_name" name="group_name" required>
+    <br>
+    <label for="sheet_number">Номер страницы:</label>
+    <input type="number" id="sheet_number" name="sheet_number" value="1" min="1" required>
+    <br>
+    <label>Файл:</label>
+    <br>
+    <label>
+        <input type="radio" name="algorithm" value="old" checked> Старый УП
+    </label>
+    <br>
+    <label>
+        <input type="radio" name="algorithm" value="new"> Новый УП
+    </label>
+    <br>
+    <input type="file" id="file" name="file" accept=".xlsx" required>
+    <br>
+    <button type="submit" class="btn btn-save">Загрузить файл</button>
+</form>
+
+<script>
+document.getElementById('run-algorithm-form').addEventListener('submit', function(event) {
+    event.preventDefault();
+    const startDate = document.getElementById('start_date').value;
+    const endDate = document.getElementById('end_date').value;
+
+    fetch('{% url "run_algorithm" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({ start_date: startDate, end_date: endDate })
+    }).then(response => response.json())
+      .then(data => {
+          if (data.success) {
+              alert('Алгоритм успешно выполнен!');
+          } else {
+              alert('Ошибка при выполнении алгоритма.');
+          }
+      });
+});
+
+document.getElementById('upload-file-form').addEventListener('submit', function(event) {
+    event.preventDefault();
+    const formData = new FormData();
+    formData.append('file', document.getElementById('file').files[0]);
+    formData.append('group_name', document.getElementById('group_name').value);
+    formData.append('sheet_number', document.getElementById('sheet_number').value);
+    formData.append('algorithm', document.querySelector('input[name="algorithm"]:checked').value);
+
+    fetch('{% url "upload_file" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: formData
+    }).then(response => response.json())
+      .then(data => {
+          if (data.success) {
+              alert('Файл успешно загружен и обработан!');
+          } else {
+              alert('Ошибка при загрузке файла: ' + data.message);
+          }
+      });
+});
+</script>
+{% endblock %}

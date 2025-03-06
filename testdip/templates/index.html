@@ -1,0 +1,433 @@
+{% extends "base.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}Расписание{% endblock %}
+
+{% block content %}
+<!-- Модальное окно для добавления новой пары -->
+<div id="add-pair-modal" style="display: none;">
+    <form id="add-pair-form">
+        <label for="subject">Предмет:</label>
+        <select id="subject" name="subject">
+            <option value="" disabled selected>Выберите предмет</option>
+        </select>
+        <label for="cabinet">Кабинет:</label>
+        <select id="cabinet" name="cabinet">
+            {% for cabinet in cabinets %}
+                <option value="{{ cabinet.id }}">{{ cabinet.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="button" onclick="closeModal()">Отменить</button>
+        <button type="submit">Добавить</button>
+    </form>
+</div>
+<!-- Затемненный фон для модального окна -->
+<div id="modal-overlay" class="modal-overlay"></div>
+
+<!-- Модальное окно выбора недели -->
+<div id="week-modal" class="modal">
+    <div class="modal-content">
+        <h2>Выберите неделю</h2>
+        <label for="week-select">Неделя:</label>
+        <select id="week-select">
+            {% for week_start in weekly_schedule.keys %}
+                <option value="{{ week_start|date:'Y-m-d' }}">{{ week_start|date:"d.m.Y" }}</option>
+            {% endfor %}
+        </select>
+        <div class="modal-buttons">
+            <button id="confirm-export">Экспорт</button>
+            <button id="close-modal">Отмена</button>
+        </div>
+    </div>
+</div>
+<div class="table-container">
+    <table border="1">
+        <thead>
+            <tr>
+                <td rowspan="2">Дата</td> 
+                {% for group in groups %}
+                    <td colspan="4" style="text-align: center;"><b>Группа № {{ group.name }}</b></td>
+                {% endfor %}
+            </tr>
+            <tr>
+                {% for group in groups %}
+                    <th>Ур</th>
+                    <th>Предмет</th>
+                    <th>Кабинет</th>
+                    <th>Действие</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for week_start, days in weekly_schedule.items %}
+                <tr><td><hr></td></tr>
+                {% for i in num_list %}
+                    {% with current_date=week_start|add_days:i %}
+                        <tr>
+                            <td rowspan="7" style="text-align: center;">
+                                {{ current_date|date:"d.m.Y" }} <br>
+                                {{ current_date|date:"l" }}
+                            </td>
+                            {% for pair_number in num_pairs %}
+                                <tr>
+                                    {% for group in groups %}
+                                        {% get_pair_and_group days|get_entry:current_date pair_number group as entry %}
+                                        {% if entry %}
+                                            <td>
+                                                <button class="btn btn-up-down" data-entry-id="{{ entry.id }}" style="font-size: 5px;">▲</button>
+                                                <button class="btn btn-up-down" data-entry-id="{{ entry.id }}" style="font-size: 5px;">▼</button>
+                                            </td>
+                                            <td class="predpod-sel" data-id="{{ entry.subject.id }}">        
+                                                {{ entry.subject.name.name }}
+                                            </td>
+                                            <td>
+                                                <select class="cabinet-select" data-entry-id="{{ entry.id }}">
+                                                    {% for cabinet in cabinets %}
+                                                        <option value="{{ cabinet.id }}" {% if cabinet.id == entry.cabinet.id %}selected{% endif %}>
+                                                            {{ cabinet.name }}
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-delete" data-entry-id="{{ entry.id }}" style="font-size: 10px;">Удалить</button>
+                                            </td>
+                                        {% else %}
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td>
+                                                <button class="btn btn-save" onclick="openModal(this)" 
+                                                        data-date="{{ current_date|date:'Y-m-d' }}" 
+                                                        data-pair="{{ pair_number }}" 
+                                                        data-group="{{ group.id }}" 
+                                                        style="font-size: 10px;">
+                                                    Добавить
+                                                </button>
+                                            </td>
+                                        {% endif %}
+                                    {% endfor %}
+                                </tr>
+                            {% endfor %}
+                        </tr>
+                    {% endwith %}
+                {% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+    <div class="button-container" style="position: fixed; bottom: 10px; right: 10px; display: flex; gap: 10px;">
+        <button id="save-changes" class="btn btn-save">Сохранить изменения</button>
+        <button id="export-excel" class="btn btn-edit">Вывод в Excel</button>
+    </div>
+
+
+    {{ prepod_subjects|json_script:"prepod-subjects-data" }}
+    <script>
+
+function saveScrollPosition() {
+    const tableContainer = document.querySelector('.table-container');
+    if (tableContainer) {
+        const scrollPosition = tableContainer.scrollTop;
+        localStorage.setItem('tableScrollPosition', scrollPosition);
+    }
+}
+function restoreScrollPosition() {
+    const tableContainer = document.querySelector('.table-container');
+    if (tableContainer) {
+        const scrollPosition = localStorage.getItem('tableScrollPosition');
+        if (scrollPosition) {
+            tableContainer.scrollTop = parseInt(scrollPosition);
+            localStorage.removeItem('tableScrollPosition'); // Очищаем сохранённую позицию
+        }
+    }
+}
+        // console.log("Predmets data:", '{{ predmets|escapejs }}');
+        // console.log("Subjects data:", '{{ subjectss|escapejs }}');
+        window.predmets = JSON.parse('{{ predmets|escapejs }}');
+        window.predms = JSON.parse('{{ subjectss|escapejs }}');
+        
+        let changes = {
+            updates: [],  // Для обновленных записей
+            deletions: [],  // Для удаленных записей
+        };
+        
+        // Функция для проверки повторяющихся кабинетов в строке
+        function checkDuplicateCabinets() {
+            const rows = document.querySelectorAll('tbody tr'); // Все строки таблицы
+        
+            rows.forEach(row => {
+                // Выбираем все выпадающие списки кабинетов в строке
+                const cabinetSelects = Array.from(row.querySelectorAll('.cabinet-select'));
+                const cabinetValues = cabinetSelects.map(select => select.value); // Значения кабинетов
+        
+                // Создаем объект для подсчета повторений
+                const cabinetCounts = {};
+                cabinetValues.forEach(value => {
+                    if (value) {
+                        cabinetCounts[value] = (cabinetCounts[value] || 0) + 1;
+                    }
+                });
+        
+                // Подсвечиваем ячейки, если кабинеты повторяются
+                cabinetSelects.forEach((select, index) => {
+                    const value = cabinetValues[index];
+                    const cell = select.closest('td'); // Находим ячейку, содержащую выпадающий список
+                    if (value && cabinetCounts[value] > 1) {
+                        cell.style.backgroundColor = '#FF0F0F'; // Подсветка красным
+                    } else {
+                        cell.style.backgroundColor = ''; // Сброс цвета
+                    }
+                });
+            });
+        }
+        function checkDuplicatePrepods() {
+    const rows = document.querySelectorAll('tbody tr'); // Все строки таблицы
+
+    rows.forEach((row, rowIndex) => {
+        // 1. Получаем список ID предметов из текущей строки, пропуская пустые ячейки
+        const predmetsIds = Array.from(row.querySelectorAll('td.predpod-sel'))
+            .map(td => td.dataset.id)
+            .filter(id => id); // Убираем пустые ID
+
+        if (predmetsIds.length === 0) {
+            // console.log(`Строка ${rowIndex}: пустая, пропускаем.`);
+            return;
+        }
+
+        // console.log(`Строка ${rowIndex} - Предметы (ID):`, predmetsIds);
+
+        // 2. Находим соответствующие объекты `PredM` по `Predmets.name`
+        const prepodsIds = predmetsIds.map(predmetId => {
+            const predmet = window.predmets.find(p => p.id == predmetId);
+            if (!predmet) return []; // Если предмет не найден, возвращаем []
+
+            const predm = window.predms.find(pm => pm.id == predmet.name);
+            if (!predm) return []; // Если `PredM` не найден, возвращаем []
+
+            return Array.isArray(predm.prepod) ? predm.prepod : [predm.prepod]; // Приводим к массиву
+        });
+
+        // console.log(`Строка ${rowIndex} - Преподаватели (ID):`, prepodsIds);
+
+        // 3. Подсчет количества повторяющихся преподавателей
+        const prepodCounts = {}; // Объект для подсчета встречаемости каждого преподавателя
+
+        prepodsIds.forEach(prepodIdList => {
+            if (!prepodIdList) return;
+            prepodIdList.forEach(prepodId => {
+                prepodCounts[prepodId] = (prepodCounts[prepodId] || 0) + 1;
+            });
+        });
+
+        // console.log(`Строка ${rowIndex} - Подсчет повторений преподавателей:`, prepodCounts);
+
+        // 4. Подсветка дубликатов
+        row.querySelectorAll('td.predpod-sel').forEach((td, index) => {
+            const prepodIdList = prepodsIds[index];
+            
+            if (!prepodIdList || prepodIdList.length === 0) return; // Пропускаем пустые
+
+            const hasDuplicates = prepodIdList.some(prepodId => prepodCounts[prepodId] > 1);
+            td.style.backgroundColor = hasDuplicates ? '#BFBF30' : ''; // Красный цвет при дубликатах
+        });
+    });
+}
+
+        
+        // Вызов функции при загрузке страницы
+        document.addEventListener('DOMContentLoaded', checkDuplicateCabinets);
+        document.addEventListener('DOMContentLoaded', checkDuplicatePrepods);
+        document.addEventListener('DOMContentLoaded', restoreScrollPosition);
+        
+        // Вызов функции при изменении кабинетов
+    document.querySelectorAll('.cabinet-select').forEach(select => {
+        select.addEventListener('change', function() {
+            const entryId = this.dataset.entryId;
+            const cabinetId = this.value;
+
+            // Проверяем, есть ли уже запись об этом изменении
+            const existingUpdateIndex = changes.updates.findIndex(update => update.entryId === entryId && update.type === 'cabinet');
+            
+            if (existingUpdateIndex !== -1) {
+                // Если запись уже есть, обновляем её
+                changes.updates[existingUpdateIndex].value = cabinetId;
+            } else {
+                // Если записи нет, добавляем новую
+                changes.updates.push({
+                    entryId: entryId,
+                    type: 'cabinet',
+                    value: cabinetId
+                });
+            }
+
+            console.log("Изменения после выбора кабинета:", changes); // Для отладки
+            checkDuplicateCabinets();
+        });
+    });
+        
+        // Обработка удаления записи
+        document.querySelectorAll('.btn-delete').forEach(button => {
+            button.addEventListener('click', function() {
+                saveScrollPosition();
+                const entryId = this.dataset.entryId;
+        
+                fetch('/schedule/delete_schedule_entry/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({ entryId: entryId })
+                }).then(response => response.json())
+                  .then(data => {
+                      if (data.success) {
+                          location.reload();  // Перезагружаем страницу
+                      } else {
+                          alert('Ошибка при удалении записи.');
+                      }
+                  });
+            });
+        });
+        
+        document.querySelectorAll('.btn-up-down[data-entry-id]').forEach(button => {
+            button.addEventListener('click', function() {
+                saveScrollPosition();
+                const entryId = this.dataset.entryId;
+                const direction = this.textContent.includes('▲') ? 'up' : 'down';
+        
+                fetch('/schedule/move_schedule_entry/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({ entryId: entryId, direction: direction })
+                }).then(response => response.json())
+                  .then(data => {
+                      if (data.success) {
+                          location.reload();
+                      } else {
+                          alert('Ошибка при перемещении записи.');
+                      }
+                  });
+            });
+        });
+        
+        // Обработка сохранения изменений
+        document.getElementById('save-changes').addEventListener('click', function() {
+        saveScrollPosition();
+
+        fetch('/schedule/update_schedule/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify(changes)
+        }).then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  alert('Изменения сохранены успешно!');
+                  changes.updates = []; // Очищаем изменения
+                  changes.deletions = []; // Очищаем удаления
+                  location.reload();  // Перезагружаем страницу для отображения актуальных данных
+              } else {
+                  alert('Ошибка при сохранении изменений.');
+              }
+          });
+    });
+        
+        // Обработка добавления новой пары
+        function openModal(button) {
+    let modal = document.getElementById('add-pair-modal');
+    modal.style.display = 'block';
+    modal.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    const date = button.dataset.date;
+    const pair = button.dataset.pair;
+    const groupId = button.dataset.group;
+
+    document.getElementById('add-pair-form').dataset.date = date;
+    document.getElementById('add-pair-form').dataset.pair = pair;
+    document.getElementById('add-pair-form').dataset.group = groupId;
+
+    fetch(`/schedule/get_group_subjects/?group_id=${groupId}`)
+        .then(response => response.json())
+        .then(data => {
+            const subjectSelect = document.getElementById('subject');
+            subjectSelect.innerHTML = '<option value="" disabled selected>Выберите предмет</option>';
+            data.subjects.forEach(subject => {
+                const option = document.createElement('option');
+                option.value = subject.id;
+                option.textContent = subject.name;
+                subjectSelect.appendChild(option);
+            });
+        })
+        .catch(error => alert('Ошибка загрузки предметов'));
+}
+        
+        function closeModal() {
+            document.getElementById('add-pair-modal').style.display = 'none';
+        }
+        
+        document.getElementById('add-pair-form').addEventListener('submit', function(event) {
+    saveScrollPosition();
+    event.preventDefault();
+
+    const form = event.target;
+
+    const date = form.dataset.date;
+    const pair = form.dataset.pair;
+    const groupId = form.dataset.group;
+    const subjectId = document.getElementById('subject').value;
+    const cabinetId = document.getElementById('cabinet').value;
+
+    fetch('/schedule/add_schedule_entry/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            date: date,
+            pair_number: pair,
+            group_id: groupId,
+            subject_id: subjectId,
+            cabinet_id: cabinetId
+        })
+    }).then(response => response.json())
+      .then(data => {
+          if (data.success) {
+              alert('Запись добавлена успешно!');
+              location.reload();
+          } else {
+              alert('Ошибка при добавлении записи: ' + (data.error || 'Неизвестная ошибка'));
+          }
+      });
+});
+
+        document.getElementById("export-excel").addEventListener("click", function () {
+    document.getElementById("week-modal").style.display = "block";
+    document.getElementById("modal-overlay").style.display = "block";
+});
+
+// Закрытие модального окна
+document.getElementById("close-modal").addEventListener("click", function () {
+    document.getElementById("week-modal").style.display = "none";
+    document.getElementById("modal-overlay").style.display = "none";
+});
+
+// Экспорт выбранной недели
+document.getElementById("confirm-export").addEventListener("click", function () {
+    const selectedWeek = document.getElementById("week-select").value;
+    window.location.href = `/export_excel/?week_start=` + selectedWeek;
+    
+    // Закрытие окна после выбора
+    document.getElementById("week-modal").style.display = "none";
+    document.getElementById("modal-overlay").style.display = "none";
+});
+        </script>
+{% endblock %}
